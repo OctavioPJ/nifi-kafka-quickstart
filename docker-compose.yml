@@ -1,0 +1,62 @@
+version: '3'
+services:
+  nifi:
+    image: apache/nifi:latest
+    container_name: nifi
+    hostname: nifi_host
+    command:
+      - /bin/bash
+      - -c
+      - |
+        mkdir -p /home/data
+        /opt/nifi/nifi-current/bin/nifi.sh start
+        tail -F /opt/nifi/nifi-current/logs/nifi-app.log
+    volumes:
+      - ./data:/home/data
+    ports:
+      - "8443:8443"
+    environment:
+      # - SINGLE_USER_CREDENTIALS_USERNAME=admin
+      # - SINGLE_USER_CREDENTIALS_PASSWORD=admin
+      - NIFI_WEB_HTTPS_PORT=8443
+    networks:
+      - mynetwork
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+    volumes:
+      - ./zookeeper-data:/var/lib/zookeeper/data
+      - ./zookeeper-log:/var/lib/zookeeper/log
+    networks:
+      - mynetwork
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    hostname: kafka_broker
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka_broker:9092
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+    volumes:
+      - ./kafka-data:/var/lib/kafka/data
+    networks:
+      - mynetwork
+    ports:
+      - "9092:9092"
+    command:
+      - /bin/bash
+      - -c
+      - |
+        /etc/confluent/docker/run &
+        PID=$!
+        sleep 30  # Give Kafka time to start up
+        kafka-topics --create --topic icbc-topic --bootstrap-server kafka_broker:9092
+        wait $PID
+networks:
+  mynetwork:
+    driver: bridge
